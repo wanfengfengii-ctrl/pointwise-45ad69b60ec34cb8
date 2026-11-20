@@ -1,6 +1,8 @@
 from collections.abc import Sequence
 from dataclasses import dataclass
 
+from issue.shape import IntervalShape, ScaleShape
+
 from .selection import Selection
 
 
@@ -10,10 +12,19 @@ class ReviewRequest:
     pairs: tuple[tuple[str, str], ...]
 
 
+def packet_marks(packet) -> set[str]:
+    shape = packet.shape
+    if isinstance(shape, ScaleShape):
+        return {mark for mark, _ in shape.offsets}
+    if isinstance(shape, IntervalShape):
+        return {mark for mark, _, _ in shape.spans}
+    raise ValueError('unsupported fixed packet shape')
+
+
 def bind_request(selection: Selection, pairs: Sequence[Sequence[str]]) -> ReviewRequest:
     if not isinstance(pairs, Sequence) or isinstance(pairs, (str, bytes, bytearray)):
         raise ValueError('provide an ordered sequence of mark pairs')
-    marks = {mark for packet in selection.packets for mark, _ in packet.shape.offsets}
+    marks = {mark for packet in selection.packets for mark in packet_marks(packet)}
     bound = []
     for pair in pairs:
         if not isinstance(pair, Sequence) or isinstance(pair, (str, bytes, bytearray)) or len(pair) != 2:

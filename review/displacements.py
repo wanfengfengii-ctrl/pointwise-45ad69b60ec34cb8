@@ -11,6 +11,14 @@ class DisplacementResult:
     millimeters: int | None
 
 
+@dataclass(frozen=True, slots=True)
+class RangeResult:
+    start: str
+    end: str
+    minimum: int | None
+    maximum: int | None
+
+
 def _difference(placement: Placement, start: str, end: str) -> int | None:
     if placement.components[start] != placement.components[end]:
         return None

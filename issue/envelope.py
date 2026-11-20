@@ -1,7 +1,7 @@
 from dataclasses import dataclass
 from uuid import uuid4
 
-from .shape import ScaleShape
+from .shape import IntervalShape, ScaleShape
 
 
 @dataclass(frozen=True, slots=True)
@@ -17,20 +17,29 @@ class Packet:
     specimen: str
     scale: str
     revision_id: str
-    shape: ScaleShape
+    shape: ScaleShape | IntervalShape
     origins: tuple[PacketOrigin, ...]
     version: int = 1
 
 
+def _shape_marks(packet: Packet) -> set[str] | None:
+    shape = packet.shape
+    if packet.version == 1 and isinstance(shape, ScaleShape):
+        return {mark for mark, _ in shape.offsets}
+    if packet.version == 2 and isinstance(shape, IntervalShape):
+        return {mark for mark, _, _ in shape.spans}
+    return None
+
+
 def validate_packet(packet: Packet) -> Packet:
-    if not isinstance(packet, Packet) or type(packet.version) is not int or packet.version != 1:
+    if not isinstance(packet, Packet) or type(packet.version) is not int or packet.version not in (1, 2):
         raise ValueError('unsupported fixed packet version')
     for field in (packet.packet_id, packet.specimen, packet.scale, packet.revision_id):
         if type(field) is not str or not field or field.strip() != field or '\x00' in field:
             raise ValueError('invalid fixed packet identity')
-    if not isinstance(packet.shape, ScaleShape) or type(packet.origins) is not tuple:
+    marks = _shape_marks(packet)
+    if marks is None or type(packet.origins) is not tuple:
         raise ValueError('fixed packet needs a shape and origin rows')
-    marks = {mark for mark, _ in packet.shape.offsets}
     seen = set()
     for origin in packet.origins:
         if not isinstance(origin, PacketOrigin):
@@ -48,11 +57,18 @@ def validate_packet(packet: Packet) -> Packet:
 
 
 def make_packet(
-    specimen: str, scale: str, revision_id: str, shape: ScaleShape, origins, *, packet_id: str | None = None
+    specimen: str,
+    scale: str,
+    revision_id: str,
+    shape: ScaleShape,
+    origins,
+    *,
+    packet_id: str | None = None,
+    version: int = 1,
 ) -> Packet:
     identifier = uuid4().hex if packet_id is None else packet_id
     try:
         origin_rows = tuple(origins)
     except TypeError as exc:
         raise ValueError('fixed packet needs a sequence of origin rows') from exc
-    return validate_packet(Packet(identifier, specimen, scale, revision_id, shape, origin_rows))
+    return validate_packet(Packet(identifier, specimen, scale, revision_id, shape, origin_rows, version))
